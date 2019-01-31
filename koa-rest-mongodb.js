@@ -45,20 +45,19 @@ module.exports = function (opts) {
     const documentId = pathParts[1];    
     const dbName = ctx.query.db || database;
 
-
     // ensure bodyParser runs first
     await parser(ctx, async ()=>{});
     const body = ctx.request.body;
 
-    // Make sure no more parts to path - convert to REST error in future
+    // Make sure no more parts to path
     if (pathParts[2]) {
       ctx.throw(HttpStatus.BAD_REQUEST, 'Too many parts to path');
     }
 
-    // Get the filter - from body or parameters
-    const filter = '';
+    // todo... handle the where, limit, skip, order, fields
+    // const filter = '';
     
-    console.log(`${method} request`);
+    console.log(`${method} request`); // need better logging
 
     switch (method) {
       case 'GET': {
