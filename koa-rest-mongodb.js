@@ -6,12 +6,21 @@ const ObjectID = require('mongodb').ObjectID
 const addTrailingSlash = (part) => part.substr(-1) != '/' ? part + '/' : part;
 const addLeadingSlash = (part) => part.substr(0,1) != '/' ? '/' + part : part;
 
+// Todo..
+// - Add logging
+// - Implement filter, order etc
+// - Unit Test
+// - Authentication
+// - Body parser better sharing - possible look at koa-mount
+
+
+
 // This is a very simple rest to mongodb datasource service
-// GET, DELETE, POST, PUT supported.
+// GET, DELETE, POST, PUT, PATCH supported.
 //  path: /endpoint/collection/id?where={}&limit=1000&skip=100&order=field1,field2:asc&fields=field1,field2,field3.child?db=test
 //    endpoint - could be multiple i.e. /api/v1
 //    collection mandatory
-//    id mandatory for DELETE and PUT, optional for GET, invalid for POST
+//    id mandatory for DELETE, PUT and PATCH, optional for GET, invalid for POST
 //    parameters - same readme
 //  body: contains JSON of object or objects
 
@@ -59,10 +68,11 @@ module.exports = function (opts) {
     
     console.log(`${method} request`); // need better logging
 
+    const db = await connectToDb(dbName);
+
     switch (method) {
       case 'GET': {
         // Get record using id (if specified) and filter (if specified)
-        const db = await connectToDb(dbName);
         const query = documentId ? { _id: ObjectID(documentId) } : {};        
         const result = await db.collection(collectionName).find(query).toArray()
         ctx.body = result;
@@ -71,9 +81,6 @@ module.exports = function (opts) {
       }      
       case 'POST': {
         // Perform database insert, single or multiple records
-
-        const db = await connectToDb(dbName);
-
         if (Array.isArray(body)) {
           const result = await db.collection(collectionName).insertMany(body);
           ctx.body = result.ops;  
@@ -84,23 +91,34 @@ module.exports = function (opts) {
 
         break;
       }
-      case 'PUT': {
-        // Effectively an upsert - update or else insert - ID must be present - https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.6
+      case 'PATCH': {
+        // Patch should so partial update - i.e. the $set for only specified fields
         if (!documentId) {
           ctx.throw(HttpStatus.BAD_REQUEST, 'Document not specified');
         }
 
-        const db = await connectToDb(dbName);
         const query = { _id: ObjectID(documentId) };        
         const result = await db.collection(collectionName).updateOne(query, {$set: body}, { upsert: true });
+        ctx.body = result;
+
+        break;
+
+      }
+      case 'PUT': {
+        // Effectively an upsert - update or else insert - ID must be present - https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.6
+        // Put is meant to replace the complete resource.
+        if (!documentId) {
+          ctx.throw(HttpStatus.BAD_REQUEST, 'Document not specified');
+        }
+
+        const query = { _id: ObjectID(documentId) };        
+        const result = await db.collection(collectionName).replaceOne(query, body, { upsert: true });
         ctx.body = result;
 
         break;
       }
       case 'DELETE': {
         // currently only support delete individual and no where parameter allowed
-        const db = await connectToDb(dbName);
-
         if (!documentId) {
           ctx.throw(HttpStatus.BAD_REQUEST, 'Document not specified');
         }
