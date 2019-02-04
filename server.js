@@ -6,6 +6,7 @@ const endpoint = process.argv[3] || 'other';
 
 const app = new (require('koa'))();
 const router = new (require('koa-router'))({prefix: `/${endpoint}`});
+const mount = require('koa-mount');
 const restMongo = require('./koa-rest-mongodb');
 
 // Random router stuff
@@ -14,7 +15,7 @@ router.get('/', async (ctx, next) => { ctx.body = { greeting: "hello world!" } }
 
 app
   .use(router.routes())
-  .use(restMongo({ db: 'test', endpoint: 'api' }))
+  .use(mount('/api', restMongo({db: 'test'})))
   .listen(port);
 
 console.log(`Koa listening at http://localhost:${port}/${endpoint}`);

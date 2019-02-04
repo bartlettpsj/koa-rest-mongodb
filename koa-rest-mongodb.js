@@ -6,16 +6,17 @@ const Str = require('./string_util');
 
 // Todo..
 // - Add logging
+// - Review results
 // - Unit Test
 // - Authentication
-// - Body parser better sharing - possible look at *koa-mount*
+// - Body parser better sharing
 // - Better validation and error handling - maybe try catch?
 
 
 // This is a very simple rest to mongodb datasource service
 // GET, HEAD, DELETE, POST, PUT, PATCH supported.
 //  path: /endpoint/collection/id?query={}&limit=1000&skip=100&sort=field1,field2:asc&fields=field1,field2,field3.child?db=test
-//    endpoint - could be multiple i.e. /api/v1
+//    endpoint - could be multiple i.e. /api/v1 - endpoint now handled by koa-mount
 //    collection mandatory
 //    id mandatory for DELETE, PUT and PATCH, optional for GET, HEAD invalid for POST
 //    parameters - same readme
@@ -25,8 +26,6 @@ module.exports = function (opts) {
 
   opts = opts || {};
 
-  const endpoint = opts.endpoint || '';
-  const fullendpoint = Str.addTrailingSlash(Str.addLeadingSlash(endpoint));
   const connectionString = opts.connectionString || 'mongodb://localhost:27017';
   const database = opts.db || 'database';
   const parser = bodyParser();
@@ -41,12 +40,7 @@ module.exports = function (opts) {
     const method = ctx.method;
     const path = ctx.path;
 
-    // need to ignore requests not destined to us
-    if (!path.startsWith(fullendpoint)) return await next();
-
-    // Split up the path removing the endpoint and splitting into parts - *** NEED TO TEST/FIX WITH NO ENDPOINT***
-    const requestPath = (path.startsWith(fullendpoint)) ? path.substr(fullendpoint.length) : path;
-    const pathParts = requestPath.split('/');
+    const pathParts = Str.removeLeadingSlash(path).split('/');
     const collectionName = pathParts[0];
     const documentId = pathParts[1];    
     const dbName = ctx.query.db || database;
