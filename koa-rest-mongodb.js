@@ -6,10 +6,11 @@ const Str = require('./string_util');
 
 // Todo..
 // - Add logging
+// - Review results
 // - Unit Test
 // - Authentication
 // - include AJV schema validation
-// - Body parser better sharing - possible look at *koa-mount*
+// - Body parser better sharing
 // - Better validation and error handling - maybe try catch?
 
 // Options:

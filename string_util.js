@@ -5,6 +5,9 @@ module.exports = class StringUtil {
     static addLeadingSlash(part) {
         return part.substr(0,1) != '/' ? '/' + part : part;
     }
+    static removeLeadingSlash(part) {
+        return part.substr(0,1) == '/' ? part.substr(1) : part;
+    }
     static equalsIgnoreCase(a, b) {
         return typeof a === 'string' && typeof b === 'string'
             ? a.localeCompare(b, undefined, { sensitivity: 'accent' }) === 0
