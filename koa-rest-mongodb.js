@@ -8,14 +8,18 @@ const Str = require('./string_util');
 // - Add logging
 // - Unit Test
 // - Authentication
+// - include AJV schema validation
 // - Body parser better sharing - possible look at *koa-mount*
 // - Better validation and error handling - maybe try catch?
+
+// Options:
+//   db-
+//   connectionString-
 
 
 // This is a very simple rest to mongodb datasource service
 // GET, HEAD, DELETE, POST, PUT, PATCH supported.
-//  path: /endpoint/collection/id?query={}&limit=1000&skip=100&sort=field1,field2:asc&fields=field1,field2,field3.child?db=test
-//    endpoint - could be multiple i.e. /api/v1
+//  path: /collection/id?query={}&limit=1000&skip=100&sort=field1,field2:asc&fields=field1,field2,field3.child?db=test
 //    collection mandatory
 //    id mandatory for DELETE, PUT and PATCH, optional for GET, HEAD invalid for POST
 //    parameters - same readme
@@ -25,8 +29,6 @@ module.exports = function (opts) {
 
   opts = opts || {};
 
-  const endpoint = opts.endpoint || '';
-  const fullendpoint = Str.addTrailingSlash(Str.addLeadingSlash(endpoint));
   const connectionString = opts.connectionString || 'mongodb://localhost:27017';
   const database = opts.db || 'database';
   const parser = bodyParser();
@@ -37,26 +39,25 @@ module.exports = function (opts) {
   }
 
   return async (ctx, next) => {
- 
+
     const method = ctx.method;
     const path = ctx.path;
-
-    // need to ignore requests not destined to us
-    if (!path.startsWith(fullendpoint)) return await next();
-
-    // Split up the path removing the endpoint and splitting into parts - *** NEED TO TEST/FIX WITH NO ENDPOINT***
-    const requestPath = (path.startsWith(fullendpoint)) ? path.substr(fullendpoint.length) : path;
-    const pathParts = requestPath.split('/');
-    const collectionName = pathParts[0];
-    const documentId = pathParts[1];    
+    const pathParts = path.split('/');
+    const collectionName = pathParts[1];
+    const documentId = pathParts[2];
     const dbName = ctx.query.db || database;
 
     // ensure bodyParser runs first
     await parser(ctx, async ()=>{});
     const body = ctx.request.body;
 
+    // Make sure we have collection
+    if (!collectionName) {
+      ctx.throw(HttpStatus.BAD_REQUEST, 'Collection Name missing');
+    }
+
     // Make sure no more parts to path
-    if (pathParts[2]) {
+    if (pathParts[3]) {
       ctx.throw(HttpStatus.BAD_REQUEST, 'Too many parts to path');
     }
 
@@ -66,14 +67,14 @@ module.exports = function (opts) {
       }
     }
 
-    console.log(`${method} request`); // need better logging
+    console.log(`${Date()}: ${method} request`); // need better logging
 
     const db = await connectToDb(dbName); // less code but lazy!
     let isGet = false;
 
-    switch (method) {        
-      case 'GET': 
-        isGet = true; 
+    switch (method) {
+      case 'GET':
+        isGet = true;
       case 'HEAD': {
         let count;
         let result;
@@ -88,7 +89,7 @@ module.exports = function (opts) {
         let isCount = Str.equalsIgnoreCase(documentId, 'count');
 
         // Handle Query - Get record using id (if specified) and filter (if specified)
-        let query = !isCount && documentId ? { _id: ObjectID(documentId) } : {};        
+        let query = !isCount && documentId ? { _id: ObjectID(documentId) } : {};
         const filter = ctx.query.query;
         if (filter) {
           try {
@@ -97,7 +98,7 @@ module.exports = function (opts) {
           } catch (err) {
             ctx.throw(HttpStatus.BAD_REQUEST, `Invalid query - must be stringified JSON - ${err.message}`);
           }
-        }         
+        }
 
         if (isCount) {
           result = await db.collection(collectionName).countDocuments(query, options);
@@ -113,7 +114,7 @@ module.exports = function (opts) {
             // setup order - [[field,ascending/descending],[field,.. from field:asc/desc,field,field....
             const order = ctx.query.sort;
             const rawFields = order ? order.split(',') : [];
-            const sort = rawFields.map(rawField => { 
+            const sort = rawFields.map(rawField => {
               const f = rawField.split(':');
               return f.length >= 2 ? [f[0],f[1].toLowerCase().startsWith('d') ? 'descending' : 'ascending'] : [f[0], 'ascending'];
             })
@@ -125,17 +126,17 @@ module.exports = function (opts) {
           count = result.length;
         }
 
-        if (isGet) ctx.body = result;          
+        if (isGet) ctx.body = result;
         ctx.status = isCount || count != 0 ? HttpStatus.OK : HttpStatus.NO_CONTENT;
-        ctx.response.set('X-Document-Count', count);          
+        ctx.response.set('X-Document-Count', count);
 
         break;
-      }      
+      }
       case 'POST': {
         // Perform database insert, single or multiple records
         if (Array.isArray(body)) {
           const result = await db.collection(collectionName).insertMany(body);
-          ctx.body = result.ops;  
+          ctx.body = result.ops;
         } else {
           const result = await db.collection(collectionName).insertOne(body);
           ctx.body = Array.isArray(result) ? result.ops[0] : result.ops;
@@ -147,7 +148,7 @@ module.exports = function (opts) {
         // Patch should so partial update - i.e. the $set for only specified fields
         checkDocumentId();
 
-        const query = { _id: ObjectID(documentId) };        
+        const query = { _id: ObjectID(documentId) };
         const result = await db.collection(collectionName).updateOne(query, {$set: body}, { upsert: true });
         ctx.body = result;
 
@@ -159,7 +160,7 @@ module.exports = function (opts) {
         // Put is meant to replace the entire resource.
         checkDocumentId();
 
-        const query = { _id: ObjectID(documentId) };        
+        const query = { _id: ObjectID(documentId) };
         const result = await db.collection(collectionName).replaceOne(query, body, { upsert: true });
         ctx.body = result;
 
@@ -170,8 +171,8 @@ module.exports = function (opts) {
         checkDocumentId();
 
         // Check that parameters are not specified
-        
-        const query = { _id: ObjectID(documentId) };        
+
+        const query = { _id: ObjectID(documentId) };
         const result = await db.collection(collectionName).deleteOne(query);
         ctx.body = result;
 
