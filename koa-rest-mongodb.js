@@ -3,6 +3,7 @@ const HttpStatus = require('http-status-codes');
 const MongoClient = require('mongodb').MongoClient;
 const ObjectID = require('mongodb').ObjectID
 const Str = require('./string_util');
+const Ajv = require('ajv');
 
 // Todo..
 // - Add logging
@@ -16,6 +17,7 @@ const Str = require('./string_util');
 // Options:
 //   db-
 //   connectionString-
+//   schema - contains JSON schema
 
 
 // This is a very simple rest to mongodb datasource service
@@ -33,6 +35,10 @@ module.exports = function (opts) {
   const connectionString = opts.connectionString || 'mongodb://localhost:27017';
   const database = opts.db || 'database';
   const parser = bodyParser();
+  const schema = opts.schema;
+
+  // If we have a schema then create validator
+  const schemaValidator = schema ? (new Ajv()).compile(schema) : null;
 
   const connectToDb = async (dbName) => {
     const client = await MongoClient.connect(connectionString, { useNewUrlParser: true });
@@ -66,6 +72,11 @@ module.exports = function (opts) {
       if (!documentId) {
         ctx.throw(HttpStatus.BAD_REQUEST, 'Document not specified');
       }
+    }
+
+    // Ensure data in body is valid for given schema
+    const validateSchema = () => {
+
     }
 
     console.log(`${Date()}: ${method} request`); // need better logging
