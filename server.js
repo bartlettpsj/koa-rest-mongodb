@@ -16,7 +16,15 @@ router.get('/', async (ctx, next) => { ctx.body = { greeting: "hello world!" } }
 
 app
   .use(router.routes())
-  .use(mount('/api', restMongo( { schema })))
+  .use(mount('/api',
+    restMongo({
+      schemas: {
+        craft: schema
+      },
+      validators: {
+        craft: ( data ) => { return { valid: true, errors: 'no bad stuff happened!' } }
+      }
+    })))
   .listen(port);
 
 console.log(`Koa listening at http://localhost:${port}/${endpoint}`);

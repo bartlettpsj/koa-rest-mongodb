@@ -4,13 +4,15 @@ const MongoClient = require('mongodb').MongoClient;
 const ObjectID = require('mongodb').ObjectID
 const Str = require('./string_util');
 const Ajv = require('ajv');
+const _ = require('lodash');
+const util = require('util');
 
 // Todo..
 // - Add logging
 // - Review results
 // - Unit Test
 // - Authentication
-// - include AJV schema validation
+// - Validation on non PUT and POST --- i.e. PATCH
 // - Body parser better sharing
 // - Better validation and error handling - maybe try catch?
 
@@ -36,9 +38,15 @@ module.exports = function (opts) {
   const database = opts.db || 'database';
   const parser = bodyParser();
   const schema = opts.schema;
+  const schemas = opts.schemas;
+  const validators = opts.validators;
 
   // If we have a schema then create validator
   const schemaValidator = schema ? (new Ajv()).compile(schema) : null;
+
+  // create collection of schema validations
+  const ajv = new Ajv();
+  const schemaValidators = _.reduce(schemas, (r, v, k) => (r[k] = ajv.compile(v), r), {});
 
   const connectToDb = async (dbName) => {
     const client = await MongoClient.connect(connectionString, { useNewUrlParser: true });
@@ -75,8 +83,32 @@ module.exports = function (opts) {
     }
 
     // Ensure data in body is valid for given schema
-    const validateSchema = () => {
+    const validateSchema = async (data = body) => {
+      if (schemaValidators[collectionName]) {
+        const validator = schemaValidators[collectionName];
 
+        if (!validator(data)) {
+          ctx.throw(HttpStatus.BAD_REQUEST, `Schema validation error  - ${util.inspect(validator.errors, { breakLength: Infinity, compact: true})}`);
+        } else {
+          console.log('Schema validation successful', collectionName, data);
+          return await new Promise(resolve => setTimeout( resolve, 1000));
+        }
+      }
+    }
+
+    // Ensure data in body passes validators - validators return: { valid, errors[] }
+    const validateData = async (data = body) => {
+      if (validators && validators[collectionName]) {
+        const result = await validators[collectionName](data);
+        if (!result.valid) {
+          const error_msg = result.errors ? ' - ' + util.inspect(result.errors, { breakLength: Infinity, compact: true}) : '';
+          ctx.throw(HttpStatus.BAD_REQUEST, `Data validation error ${error_msg}`);
+        } else {
+          console.log('Data validation successful', collectionName, data);
+          return await new Promise(resolve => setTimeout( resolve, 1500));
+
+        }
+      }
     }
 
     console.log(`${Date()}: ${method} request`); // need better logging
@@ -145,11 +177,20 @@ module.exports = function (opts) {
         break;
       }
       case 'POST': {
+        // Check the schema and data
+
         // Perform database insert, single or multiple records
         if (Array.isArray(body)) {
+          // validate each record - using for await loop
+          for await (let data of body) {
+            await validateSchema(data);
+            await validateData(data);
+          }
           const result = await db.collection(collectionName).insertMany(body);
           ctx.body = result.ops;
         } else {
+          await validateSchema();
+          await validateData();
           const result = await db.collection(collectionName).insertOne(body);
           ctx.body = Array.isArray(result) ? result.ops[0] : result.ops;
         }
@@ -171,6 +212,8 @@ module.exports = function (opts) {
         // Effectively an upsert - update or else insert - ID must be present - https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.6
         // Put is meant to replace the entire resource.
         checkDocumentId();
+        await validateSchema();
+        await validateData();
 
         const query = { _id: ObjectID(documentId) };
         const result = await db.collection(collectionName).replaceOne(query, body, { upsert: true });

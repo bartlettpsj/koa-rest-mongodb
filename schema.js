@@ -18,6 +18,6 @@ module.exports = {
       exclusiveMinimum: 0
     }
   },
-  required: ["id", "name", "price"],
+  required: ["name"],
   additionalProperties: false
 }
