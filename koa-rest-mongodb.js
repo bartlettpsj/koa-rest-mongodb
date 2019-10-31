@@ -78,7 +78,7 @@ module.exports = function (opts) {
 
     const checkDocumentId = () => {
       if (!documentId) {
-        ctx.throw(HttpStatus.BAD_REQUEST, 'Document not specified');
+        ctx.throw(HttpStatus.BAD_REQUEST, 'Document Id not specified');
       }
     }
 
@@ -198,19 +198,18 @@ module.exports = function (opts) {
         break;
       }
       case 'PATCH': {
-        // Patch should so partial update - i.e. the $set for only specified fields
+        // Patch should so partial update - i.e. the $set for only specified fields for existing document
         checkDocumentId();
 
         const query = { _id: ObjectID(documentId) };
-        const result = await db.collection(collectionName).updateOne(query, {$set: body}, { upsert: true });
+        const result = await db.collection(collectionName).updateOne(query, {$set: body}, { upsert: false });
         ctx.body = result;
 
         break;
-
       }
       case 'PUT': {
         // Effectively an upsert - update or else insert - ID must be present - https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.6
-        // Put is meant to replace the entire resource.
+        // Put is meant to replace the entire resource or create a new one.  Must be idempotent.
         checkDocumentId();
         await validateSchema();
         await validateData();
